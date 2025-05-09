@@ -1,6 +1,6 @@
 # Adroit - HackMyVM Lösungsweg
 
-![Adroit VM Icon](Adroit.png)
+![Adroit VM Icon](Adroitpic.png)
 
 Dieses Repository enthält einen Lösungsweg (Walkthrough) für die HackMyVM-Maschine "Adroit".
 
